@@ -1,0 +1,129 @@
+#!/bin/bash
+
+
+echo "  _      ___     _____                         ";
+echo " | |    |__ \   / ____|                        ";
+echo " | |       ) | | (___  _ __   ___   ___  _ __  ";
+echo " | |      / /   \___ \| '_ \ / _ \ / _ \| '_ \ ";
+echo " | |____ / /_   ____) | | | | (_) | (_) | |_) |";
+echo " |______|____| |_____/|_| |_|\___/ \___/| .__/ ";
+echo "                                        | |    ";
+echo "                                        |_|    ";
+
+echo "";
+echo "";
+
+echo "Transparent man in the middle over an ethernet bridge. The script will assist with setting up a bridge device and use ebtables to redirect traffic destined for certain ports to a port of your choosing on the bridged interface.";
+
+echo "";
+
+while getopts "gh" opt; do
+
+	case $opt in
+		
+	h)
+		echo "L2Snoop help"
+		echo "L2Snoop is a tool to help set up a man in the middle bridge for intercepting devices that may not be proxy aware or talk to other devices on the local network"
+		echo "-h  Prints out this help menu"
+		echo "-g  Initiates guided mode which will help walk through setting up the bridge and ports to be redirected"
+		;;
+
+
+	g)
+
+		if ! [ $(id -u) = 0 ]; then
+		   echo "Sorry but to do all the cool stuff you need to run this as root"
+		   exit 1
+		fi
+
+		echo "Checking dependancies...";
+
+		hash brctl &> /dev/null
+		if [ $? -eq 1 ]; then
+		    echo >&2 "brctl not found. Please install bridge-utils";
+		    exit 1
+		fi
+
+		hash iptables &> /dev/null
+		if [ $? -eq 1 ]; then
+		    echo >&2 "iptables not found. Please install iptables"
+		    exit 1
+		fi
+
+		hash ebtables &> /dev/null
+		if [ $? -eq 1 ]; then
+		    echo >&2 "ebtables not found. Please install ebtables"
+		    exit 1
+		fi
+
+		echo "Looks like you should be okay..."
+
+		echo "Enter the first interface to bridge:"
+		read interface1
+		echo "Enter the second interface:"
+		read interface2
+		echo "Enter the network IP address to give the bridge:"
+		read ip
+
+		if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+			ipaddr=$ip
+		else
+			echo "The ip entered doesnt seem valid... exiting"
+			exit 1
+		fi	
+
+		echo "Enter the default gateway for the network:"
+		read gate
+
+		if [[ $gate =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+			gateway=$gate
+		else
+			echo "The ip entered doesnt seem valid... exiting"
+			exit 1
+		fi
+
+		#Setting up the bridge
+		ifconfig $interface1 0.0.0.0 promisc up
+		ifconfig $interface2 0.0.0.0 promisc up
+		brctl addbr br0
+		brctl addif br0 $interface1
+		brctl addif br0 $interface2
+		ip link set br0 up
+		ip addr add $ipaddr/24 brd + dev br0
+		route add default gw $gateway dev br0
+
+		echo 'Please enter the **number of ports** you would like to redirect'
+		read number
+		for ((i = 1; i <= number; i++))
+		do 
+		echo "Enter the destination port to redirect:";
+		read srcPort
+		echo ""
+		echo "Enter the port on local host you would like $srcPort redirected to:"
+		read destPort
+		echo ""
+		echo "Redirecting *:$srcPort ---> $ipaddr:$destPort"
+		echo ""
+
+		#here is where the magic happens
+		ebtables -t broute -A BROUTING -p IPv4 --ip-protocol 6 --ip-destination-port $srcPort -j redirect --redirect-target ACCEPT
+		iptables -t nat -A PREROUTING -i br0 -p tcp --dport $srcPort -j REDIRECT --to-port $destPort
+
+		done
+
+		echo "Here are your iptables and ebtables rules:"
+		ebtables -t broute -L
+		iptables -t nat -L
+
+		echo "You should be set to intercept. Make sure you have your interceptors listening on $ipaddr not localhost. Happy sniffing."
+
+		;;
+	\?)
+
+		echo "Invalid option: -$OPTARG" >&2
+		;;
+
+
+	esac
+done
+
