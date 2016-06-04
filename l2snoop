@@ -62,25 +62,30 @@ while getopts "gh" opt; do
 		read interface1
 		echo "Enter the second interface:"
 		read interface2
-		echo "Enter the network IP address to give the bridge:"
-		read ip
+		echo "Would you like to set up the bridge with DHCP? (recommended) Y/n"
+		read dhcp
+		if [[ $dhcp =~ ^n|N$ ]]; then
+			echo "Enter the network IP address to give the bridge:"
+			read ip
 
-		if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-			ipaddr=$ip
-		else
-			echo "The ip entered doesnt seem valid... exiting"
-			exit 1
-		fi	
+			if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+				ipaddr=$ip
+			else
+				echo "The ip entered doesnt seem valid... exiting"
+				exit 1
+			fi	
 
-		echo "Enter the default gateway for the network:"
-		read gate
+			echo "Enter the default gateway for the network:"
+			read gate
 
-		if [[ $gate =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-			gateway=$gate
-		else
-			echo "The ip entered doesnt seem valid... exiting"
-			exit 1
+			if [[ $gate =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+				gateway=$gate
+			else
+				echo "The ip entered doesnt seem valid... exiting"
+				exit 1
+			fi
 		fi
+
 
 		#Setting up the bridge
 		ifconfig $interface1 0.0.0.0 promisc up
@@ -89,25 +94,29 @@ while getopts "gh" opt; do
 		brctl addif br0 $interface1
 		brctl addif br0 $interface2
 		ip link set br0 up
-		ip addr add $ipaddr/24 brd + dev br0
-		route add default gw $gateway dev br0
+		if [[ $dhcp =~ ^n|N$ ]]; then
+			ip addr add $ipaddr/24 brd + dev br0
+			route add default gw $gateway dev br0
+		else
+			dhclient br0
+		fi	
 
 		echo 'Please enter the **number of ports** you would like to redirect'
 		read number
 		for ((i = 1; i <= number; i++))
 		do 
-		echo "Enter the destination port to redirect:";
-		read srcPort
-		echo ""
-		echo "Enter the port on local host you would like $srcPort redirected to:"
-		read destPort
-		echo ""
-		echo "Redirecting *:$srcPort ---> $ipaddr:$destPort"
-		echo ""
+			echo "Enter the destination port to redirect:";
+			read srcPort
+			echo ""
+			echo "Enter the port on local host you would like $srcPort redirected to:"
+			read destPort
+			echo ""
+			echo "Redirecting *:$srcPort ---> $ipaddr:$destPort"
+			echo ""
 
-		#here is where the magic happens
-		ebtables -t broute -A BROUTING -p IPv4 --ip-protocol 6 --ip-destination-port $srcPort -j redirect --redirect-target ACCEPT
-		iptables -t nat -A PREROUTING -i br0 -p tcp --dport $srcPort -j REDIRECT --to-port $destPort
+			#here is where the magic happens
+			ebtables -t broute -A BROUTING -p IPv4 --ip-protocol 6 --ip-destination-port $srcPort -j redirect --redirect-target ACCEPT
+			iptables -t nat -A PREROUTING -i br0 -p tcp --dport $srcPort -j REDIRECT --to-port $destPort
 
 		done
 
