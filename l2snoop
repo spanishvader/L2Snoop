@@ -26,6 +26,7 @@ while getopts "gh" opt; do
 		echo "L2Snoop is a tool to help set up a man in the middle bridge for intercepting devices that may not be proxy aware or talk to other devices on the local network"
 		echo "-h  Prints out this help menu"
 		echo "-g  Initiates guided mode which will help walk through setting up the bridge and ports to be redirected"
+		echo "-d  deletes the bridge and flushes the nat table in iptables and the broute table in ebtables"
 		;;
 
 
@@ -127,6 +128,14 @@ while getopts "gh" opt; do
 		echo "You should be set to intercept. Make sure you have your interceptors listening on $ipaddr not localhost. Happy sniffing."
 
 		;;
+
+	d)
+		echo "Cleaning up..."
+		ifconfig br0 down
+		ebtables -t broute -F
+		iptables -t nat -F
+		;;	
+
 	\?)
 
 		echo "Invalid option: -$OPTARG" >&2
