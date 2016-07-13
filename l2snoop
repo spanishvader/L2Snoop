@@ -207,6 +207,7 @@ while getopts "ghrd" opt; do
 
 		echo 'Please enter the **number of ports** you would like to redirect'
 		read number
+
 		for ((i = 1; i <= number; i++))
 		do 
 			echo "Enter the destination port to redirect:";
@@ -220,7 +221,7 @@ while getopts "ghrd" opt; do
 
 			#here is where the magic happens
 			ebtables -t broute -A BROUTING -p IPv4 --ip-protocol 6 --ip-destination-port $srcPort -j redirect --redirect-target ACCEPT
-			iptables -t nat -A PREROUTING -i br0 -p tcp --dport $srcPort -j DNAT --to-destination $destHostPort
+			iptables -t nat -A PREROUTING -i br0 -p tcp --dport $srcPort -j DNAT --to-destination $destHost:$destPort
 			iptables -t nat -A FORWARD -p tcp -d $destHost --dport $destPort -j ACCEPT
 			iptables -t nat -A POSTROUTING -p tcp -d $destHost -dport $destPort -j SNAT --to-source $ipaddr
 
