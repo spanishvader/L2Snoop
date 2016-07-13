@@ -194,6 +194,7 @@ while getopts "ghrd" opt; do
 		brctl addif br0 $interface1
 		brctl addif br0 $interface2
 		ip link set br0 up
+		sysctl -w net.ipv4.ip_forward=1
 		if [[ $dhcp =~ ^n|N$ ]]; then
 			ip addr add $ipaddr/24 brd + dev br0
 			route add default gw $gateway dev br0
@@ -213,7 +214,7 @@ while getopts "ghrd" opt; do
 			echo "Enter the destination port to redirect:";
 			read srcPort
 			echo ""
-			echo "Enter the port on local host you would like $srcPort redirected to:"
+			echo "Enter the port on the remote host you would like $srcPort redirected to:"
 			read destPort
 			echo ""
 			echo "Redirecting *:$srcPort ---> $destHost:$destPort"
@@ -222,14 +223,15 @@ while getopts "ghrd" opt; do
 			#here is where the magic happens
 			ebtables -t broute -A BROUTING -p IPv4 --ip-protocol 6 --ip-destination-port $srcPort -j redirect --redirect-target ACCEPT
 			iptables -t nat -A PREROUTING -i br0 -p tcp --dport $srcPort -j DNAT --to-destination "$destHost:$destPort"
-			iptables -t nat -A FORWARD -p tcp -d $destHost --dport $destPort -j ACCEPT
-			iptables -t nat -A POSTROUTING -p tcp -d $destHost -dport $destPort -j SNAT --to-source $ipaddr
+			iptables -A FORWARD -p tcp -d $destHost --dport $destPort -j ACCEPT
+			iptables -t nat -A POSTROUTING -p tcp -d $destHost --dport $destPort -j SNAT --to-source $ipaddr
 
 		done
 
 		echo "Here are your iptables and ebtables rules:"
 		ebtables -t broute -L
 		iptables -t nat -L
+		iptables -L
 
 		echo "You should be set to intercept. Make sure you have your interceptors listening on "$destHost". Happy sniffing."
 
@@ -241,6 +243,8 @@ while getopts "ghrd" opt; do
 		brctl delbr br0
 		ebtables -t broute -F
 		iptables -t nat -F
+		iptables -F
+		sysctl -w net.ipv4.ip_forward=0
 		;;	
 
 	\?)
