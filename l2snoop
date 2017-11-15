@@ -1,10 +1,8 @@
 #!/bin/bash
-
-
 echo "  _      ___     _____                         ";
 echo " | |    |__ \   / ____|                        ";
 echo " | |       ) | | (___  _ __   ___   ___  _ __  ";
-echo " | |      / /   \___ \| '_ \ / _ \ / _ \| '_ \ ";
+echo " | |      / /   \___ \| '_ \ / _ \ / _ \| |_ \ ";
 echo " | |____ / /_   ____) | | | | (_) | (_) | |_) |";
 echo " |______|____| |_____/|_| |_|\___/ \___/| .__/ ";
 echo "                                        | |    ";
@@ -17,7 +15,7 @@ echo "Transparent man in the middle over an ethernet bridge. The script will ass
 
 echo "";
 
-while getopts "ghrd" opt; do
+while getopts "ghrda" opt; do
 
 	case $opt in
 		
@@ -26,7 +24,9 @@ while getopts "ghrd" opt; do
 		echo "L2Snoop is a tool to help set up a man in the middle bridge for intercepting devices that may not be proxy aware or talk to other devices on the local network"
 		echo "-h  Prints out this help menu"
 		echo "-g  Initiates guided mode which will help walk through setting up the bridge and ports to be redirected on the local machine"
+		echo "-r  Initiates guided mode for remote forwarding for when the interceptor is on another host"
 		echo "-d  deletes the bridge and flushes the nat table in iptables and the broute table in ebtables"
+		echo "-a  add a port to redirect after the bridge is already set up"
 		;;
 
 
@@ -56,8 +56,13 @@ while getopts "ghrd" opt; do
 		    echo >&2 "ebtables not found. Please install ebtables"
 		    exit 1
 		fi
+		hash ifconfig &> /dev/null
+		if [ $? -eq 1 ]; then
+			echo >&2 "ifconfig not found. Please install ifconfig (net-tools)"
+		    exit 1
+		fi
 
-		echo "Looks like you should be okay..."
+		#echo "Looks like you should be okay..."
 
 		echo "Enter the first interface to bridge:"
 		read interface1
@@ -103,7 +108,7 @@ while getopts "ghrd" opt; do
 			ipaddr="$(ifconfig br0 | sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p')"
 		fi	
 
-		echo 'Please enter the **number of ports** you would like to redirect'
+		echo 'Please enter the **number of ports** you would like to intercept'
 		read number
 		for ((i = 1; i <= number; i++))
 		do 
@@ -203,7 +208,7 @@ while getopts "ghrd" opt; do
 			ipaddr="$(ifconfig br0 | sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p')"
 		fi
 
-		echo 'Please enter the destination host where you plan on running you intercepter'
+		echo 'Please enter the destination host ip address where you plan on running you intercepter'
 		read destHost	
 
 		echo 'Please enter the **number of ports** you would like to redirect'
@@ -245,7 +250,22 @@ while getopts "ghrd" opt; do
 		iptables -t nat -F
 		iptables -F
 		sysctl -w net.ipv4.ip_forward=0
-		;;	
+		;;
+	a)
+		echo "Enter the destination port to redirect:"
+	        read srcPort
+		echo ""
+		echo "Enter the port on local host you would like $srcPort redirected to:"
+		read destPort
+		echo ""
+		echo "Redirecting *:$srcPort ---> $ipaddr:$destPort"
+		echo ""
+		#here is where the magic happens
+		ebtables -t broute -A BROUTING -p IPv4 --ip-protocol 6 --ip-destination-port $srcPort -j redirect --redirect-target ACCEPT
+		iptables -t nat -A PREROUTING -i br0 -p tcp --dport $srcPort -j REDIRECT --to-port $destPort
+		;;
+
+
 
 	\?)
 
